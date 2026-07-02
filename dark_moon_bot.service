@@ -1,0 +1,14 @@
+[Unit]
+Description=Dark Moon Detective RPG Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/dark_moon_bot
+ExecStart=/usr/bin/python3.12 main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
