@@ -95,7 +95,7 @@ def db_setup_teardown():
     admin._awaiting_final_confirmation = False
     conn = get_connection()
     cursor = conn.cursor()
-    for table in ["players", "votes", "penalty_votes", "consent_votes", "votes_history", "games"]:
+    for table in ["players", "votes", "penalty_votes", "consent_votes", "votes_history", "games", "game_stats", "achievements"]:
         cursor.execute(f"DELETE FROM {table}")
     conn.commit()
     conn.close()
@@ -619,6 +619,30 @@ class TestHandleQrScan:
         await clues.handle_qr_scan(upd, ctx, player)
         msg.reply_text.assert_awaited()
         assert "нашли улику" in msg.reply_text.call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_qr_sets_first_scanner(self):
+        from database import register_player, assign_role, create_game, \
+            update_game_phase, get_game_stats, init_game_stats, get_connection
+        # Reset clues to unfound state
+        conn = get_connection()
+        conn.execute("UPDATE clues SET found = FALSE")
+        conn.commit()
+        conn.close()
+        gid = create_game(-100, 999)
+        init_game_stats(gid)
+        update_game_phase(gid, "discussion")
+        register_player(1, "player1")
+        assign_role(1, "Анна", "козырь", pair_id="pair_1")
+        user = make_user(id=1)
+        msg = make_message(user=user)
+        upd = make_update(message=msg, user=user)
+        ctx = make_context()
+        player = {"role": "Анна", "id": 1, "telegram_id": 1}
+        await clues.handle_qr_scan(upd, ctx, player)
+        stats = get_game_stats(gid)
+        assert stats is not None
+        assert stats["first_qr_scanner_id"] == 1
 
     @pytest.mark.asyncio
     async def test_qr_max_clues_reached(self):
