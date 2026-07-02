@@ -48,10 +48,16 @@ async def handle_qr_scan(update: Update, context: ContextTypes.DEFAULT_TYPE, pla
         await update.message.reply_text("Вы уже нашли 3 улики. Дайте другим шанс!")
         return
 
+    from database import get_found_clue_ids, set_first_qr_scanner
+    is_first = len(get_found_clue_ids()) == 0
     clue = random.choice(available)
     clue_id = clue["id"]
     mark_clue_found(clue_id)
     save_clue_for_player(user.id, clue_id)
+
+    game = get_active_game()
+    if game and is_first and player:
+        set_first_qr_scanner(game["id"], player["id"])
 
     clue_text = CLUES[clue_id]["text"]
     await update.message.reply_text(f"🔍 Вы нашли улику: {clue_text}")

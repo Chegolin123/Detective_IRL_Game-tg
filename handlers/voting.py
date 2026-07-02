@@ -3,6 +3,7 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
+import config
 from config import GROUP_CHAT_ID, VOTING_TIMEOUT
 from database import (
     get_active_game, get_active_players, get_player_by_telegram_id,
@@ -206,10 +207,29 @@ async def finalize_votes(context: ContextTypes.DEFAULT_TYPE, game_id: int, round
         save_vote_to_history(game_id, v["voter_id"], v["target_id"], round_num)
 
     eliminated_name = eliminated["role"]
-    await context.bot.send_message(
+    eliminated_username = eliminated.get("username", "")
+    elim_msg = await context.bot.send_message(
         GROUP_CHAT_ID,
         f"🗳️ Исключается *{eliminated_name}*!",
         parse_mode="Markdown"
+    )
+
+    admin_kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⏭️ Пропустить", callback_data="admin_skip"),
+            InlineKeyboardButton("📊 Статус", callback_data="admin_status"),
+        ],
+        [
+            InlineKeyboardButton(
+                f"🔄 Вернуть {eliminated_name}",
+                callback_data=f"admin_restore_{eliminated_username}"
+            ),
+        ]
+    ])
+    await context.bot.send_message(
+        GROUP_CHAT_ID,
+        "Ведущий:",
+        reply_markup=admin_kb
     )
 
     if eliminated["alibi_protected"] and eliminated["initial_clue"]:
@@ -370,6 +390,46 @@ async def handle_vote_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     voted = get_vote_count(game["id"], game["round"])
     alive = count_active_players()
 
+async def handle_admin_skip_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = update.effective_user
+    if not user or user.id != config.ADMIN_ID:
+        await query.answer("Эта кнопка только для ведущего.", show_alert=True)
+        return
+    await query.answer()
+    await query.edit_message_reply_markup(None)
+    from handlers.admin import handle_skip
+    msg = query.message
+    msg.text = "/skip"
+    await handle_skip(update, context)
+
+
+async def handle_admin_status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = update.effective_user
+    if not user or user.id != config.ADMIN_ID:
+        await query.answer("Эта кнопка только для ведущего.", show_alert=True)
+        return
+    await query.answer()
+    from handlers.admin import handle_status
+    await handle_status(update, context)
+
+
+async def handle_admin_restore_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = update.effective_user
+    if not user or user.id != config.ADMIN_ID:
+        await query.answer("Эта кнопка только для ведущего.", show_alert=True)
+        return
+    await query.answer()
+    await query.edit_message_reply_markup(None)
+    username = query.data[len("admin_restore_"):]
+    if username:
+        from handlers.admin import handle_restore
+        context.args = [f"@{username}"]
+        await handle_restore(update, context)
+
+
     if voted >= alive:
         # Re-check phase; another callback may have already triggered finalization
         game2 = get_active_game()
@@ -383,3 +443,6 @@ def register_handlers(app):
     from telegram.ext import CallbackQueryHandler
     app.add_handler(CallbackQueryHandler(handle_consent_callback, pattern="^consent_"))
     app.add_handler(CallbackQueryHandler(handle_vote_callback, pattern="^vote_"))
+    app.add_handler(CallbackQueryHandler(handle_admin_skip_callback, pattern="^admin_skip$"))
+    app.add_handler(CallbackQueryHandler(handle_admin_status_callback, pattern="^admin_status$"))
+    app.add_handler(CallbackQueryHandler(handle_admin_restore_callback, pattern="^admin_restore_"))

@@ -75,6 +75,22 @@ async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 _awaiting_final_confirmation = False
 
 
+async def handle_vote(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not user or user.id != config.ADMIN_ID:
+        await update.message.reply_text("Эта команда только для ведущего.")
+        return
+
+    game = get_active_game()
+    if not game or game["phase"] != "discussion":
+        await update.message.reply_text("Сейчас нельзя — игра не в фазе обсуждения.")
+        return
+
+    from handlers.voting import send_consent_to_all
+    await send_consent_to_all(context)
+    await update.message.reply_text("✅ Кнопки голосования разосланы всем активным игрокам.")
+
+
 async def handle_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not user or user.id != config.ADMIN_ID:
@@ -278,10 +294,12 @@ async def handle_confirm_final(update: Update, context: ContextTypes.DEFAULT_TYP
         GROUP_CHAT_ID, final_text, parse_mode="Markdown"
     )
 
-    from database import get_all_players, get_player_achievements
+    from database import get_all_players, get_player_achievements, get_game_stats
     all_players = get_all_players()
     history = get_votes_history(game["id"])
     eliminated_ids = {r["target_id"] for r in history}
+    stats = get_game_stats(game["id"])
+    first_scanner_id = stats.get("first_qr_scanner_id") if stats else None
     for p in all_players:
         player_id = p["id"]
         if p["active"]:
@@ -293,6 +311,8 @@ async def handle_confirm_final(update: Update, context: ContextTypes.DEFAULT_TYP
             save_achievement(game["id"], player_id, "Нашёл улику")
         if clues_count >= 3:
             save_achievement(game["id"], player_id, "Собрал 3 улики")
+        if first_scanner_id and player_id == first_scanner_id:
+            save_achievement(game["id"], player_id, "Первооткрыватель")
 
         achievements = get_player_achievements(game["id"], player_id)
         if achievements:
@@ -327,6 +347,9 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*Команды ведущего:*",
             "• `/assign @username Имя` — назначить роль",
             "• `/startgame` — начать игру",
+            "• `/vote` — разослать кнопки согласия",
+            "• `/skip` — пропустить раунд",
+            "• `/restore @username` — вернуть исключённого",
             "• `/final` — финал (когда ≤3 игроков)",
             "• `/status` — статус игры",
             ""
@@ -363,6 +386,7 @@ async def handle_setgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def register_handlers(app):
     from telegram.ext import CommandHandler
     app.add_handler(CommandHandler("status", handle_status))
+    app.add_handler(CommandHandler("vote", handle_vote))
     app.add_handler(CommandHandler("final", handle_final))
     app.add_handler(CommandHandler("confirm_final", handle_confirm_final))
     app.add_handler(CommandHandler("skip", handle_skip))
