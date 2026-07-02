@@ -11,9 +11,9 @@ from database import (
     get_player_by_id, get_player_clues, get_connection,
     clear_consent_votes, get_eliminated_this_round, reactivate_player,
     get_player_by_username, check_pair_alibi_on_elimination,
-    save_achievement,
+    save_achievement, get_all_players,
 )
-from data import FINALS, FINALS_META, ROLES
+from data import FINALS, FINALS_META, ROLES, CLUES
 
 logger = logging.getLogger(__name__)
 
@@ -30,22 +30,41 @@ async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     active = get_active_players()
+    all_players = get_all_players()
     found_clues = get_found_clue_ids()
 
+    phase_emoji = {
+        "setup": "🛠️", "discussion": "💬", "voting": "🗳️", "finished": "🏁"
+    }
     lines = [
-        f"📊 *Статус игры*",
-        f"Фаза: {game['phase']}",
-        f"Раунд: {game['round']}",
-        f"Активных игроков: {len(active)}",
-        f"Найдено улик: {len(found_clues)}/15",
+        f"{phase_emoji.get(game['phase'], '❓')} *Статус игры*",
+        f"Фаза: {game['phase']} | Раунд: {game['round']}",
+        f"В игре: {len(active)} | Всего: {len(all_players)}",
+        f"Улики: {len(found_clues)}/15",
         "",
-        "*Активные игроки:*"
+        "*Кто в игре:*"
     ]
 
     for p in active:
         name = p["role"] or f"@{p['username']}"
-        clues = get_player_clues(p["telegram_id"])
-        lines.append(f"• {name} (улик: {len(clues)})")
+        clues_n = len(get_player_clues(p["telegram_id"]))
+        alibi = "✅" if p.get("alibi_protected") else "⚠️"
+        lines.append(f"{alibi} {name} (улик: {clues_n})")
+
+    eliminated = [p for p in all_players if not p["active"]]
+    if eliminated:
+        lines.append("")
+        lines.append("*Исключены:*")
+        for p in eliminated:
+            role = p["role"] or f"@{p['username']}"
+            lines.append(f"✖️ {role}")
+
+    if found_clues:
+        lines.append("")
+        lines.append("*Найденные улики:*")
+        for cid in found_clues:
+            clue_text = CLUES[cid]["text"]
+            lines.append(f"• {clue_text}")
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
@@ -261,10 +280,14 @@ async def handle_confirm_final(update: Update, context: ContextTypes.DEFAULT_TYP
 
     from database import get_all_players, get_player_achievements
     all_players = get_all_players()
+    history = get_votes_history(game["id"])
+    eliminated_ids = {r["target_id"] for r in history}
     for p in all_players:
         player_id = p["id"]
         if p["active"]:
             save_achievement(game["id"], player_id, "Выживший в финале")
+        if player_id not in eliminated_ids:
+            save_achievement(game["id"], player_id, "Ни разу не исключён")
         clues_count = len(get_player_clues(p["telegram_id"]))
         if clues_count >= 1:
             save_achievement(game["id"], player_id, "Нашёл улику")

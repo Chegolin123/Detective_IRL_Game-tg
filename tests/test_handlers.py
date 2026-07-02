@@ -540,7 +540,9 @@ class TestHandlePublish:
         ctx = make_context()
         await clues.handle_publish(upd, ctx)
         msg.reply_text.assert_awaited()
-        ctx.bot.send_message.assert_awaited_once()
+        # Now shows clue selection keyboard, not direct publish
+        reply = msg.reply_text.call_args[1]
+        assert "reply_markup" in reply
 
 
 class TestHandleUse:
