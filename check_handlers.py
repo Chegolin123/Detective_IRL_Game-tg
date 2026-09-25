@@ -1,15 +1,16 @@
-import paramiko
+"""Показывает, какие хендлеры зарегистрированы в main.py на VPS."""
 import sys
+
+from vps_ssh import BOT_DIR, connect, run
+
 sys.stdout.reconfigure(encoding="utf-8")
 
-ssh = paramiko.SSHClient()
-ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect("144.31.207.192", 22, "root", "730639779")
+ssh = connect()
+try:
+    data, _err, _code = run(ssh, f"cat {BOT_DIR}/main.py")
+finally:
+    ssh.close()
 
-c = ssh.exec_command("cat /root/dark_moon_bot/main.py")
-data = c[1].read().decode("utf-8")
-# Print lines matching registration
 for i, line in enumerate(data.split("\n"), 1):
     if "register" in line or "add_handler" in line or "def main" in line:
         print(f"{i}: {line}")
-ssh.close()

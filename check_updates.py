@@ -1,12 +1,16 @@
-import json, urllib.request
+"""Последние обновления бота. Токен — из BOT_TOKEN (см. config.py)."""
+import json
+import urllib.request
 
-token = "8955021011:AAEMCaRy1qQJciiL5_wygf7Xfb79xmgpmMk"
+from config import BOT_TOKEN
 
-url = f"https://api.telegram.org/bot{token}/getUpdates?limit=10"
-resp = json.loads(urllib.request.urlopen(url).read())
+with urllib.request.urlopen(
+    f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates?limit=10", timeout=20
+) as resp:
+    body = json.loads(resp.read())
 
-if resp["ok"] and resp["result"]:
-    for upd in resp["result"]:
+if body["ok"] and body["result"]:
+    for upd in body["result"]:
         msg = upd.get("message", {})
         chat = msg.get("chat", {})
         text = (msg.get("text") or "")[:50]

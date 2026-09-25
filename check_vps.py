@@ -1,24 +1,23 @@
-import paramiko
-ssh = paramiko.SSHClient()
-ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect('144.31.207.192', 22, 'root', '730639779')
+"""Состояние бота на VPS: ключи .env (без значений), процесс, размер лога."""
+import sys
 
-# Check .env
-c = ssh.exec_command("cat /root/dark_moon_bot/.env")
-print("ENV:", c[1].read().decode())
+from vps_ssh import BOT_DIR, connect, run
 
-# Check bot PID
-c = ssh.exec_command("ps aux | grep 'python3 main' | grep -v grep")
-proc = c[1].read().decode()
-print("PROC:", proc if proc else "DEAD")
+sys.stdout.reconfigure(encoding="utf-8")
 
-# Check bot log
-c = ssh.exec_command("wc -l /root/dark_moon_bot/bot.log 2>/dev/null")
-lines = c[1].read().decode().strip()
-print(f"Log lines: {lines}")
+ssh = connect()
+try:
+    # печатаем только имена переменных, значения секретов не выводим
+    env, _e, _c = run(ssh, f"grep -o '^[A-Z_]*' {BOT_DIR}/.env")
+    print("ENV keys:", ", ".join(x for x in env.split() if x) or "(пусто)")
 
-c = ssh.exec_command("tail -20 /root/dark_moon_bot/bot.log")
-log = c[1].read().decode()
-print("LOG:", log[-500:] if log else "(empty)")
+    proc, _e, _c = run(ssh, "ps aux | grep 'python3 main' | grep -v grep")
+    print("PROC:", proc.strip() if proc.strip() else "DEAD")
 
-ssh.close()
+    lines, _e, _c = run(ssh, f"wc -l {BOT_DIR}/bot.log 2>/dev/null")
+    print(f"Log lines: {lines.strip()}")
+
+    log, _e, _c = run(ssh, f"tail -20 {BOT_DIR}/bot.log")
+    print("LOG:", log[-500:] if log else "(empty)")
+finally:
+    ssh.close()
